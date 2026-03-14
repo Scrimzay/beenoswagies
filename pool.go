@@ -54,33 +54,10 @@ func New[T any](ctx context.Context, workerCount int, opts ...Option[T]) *Pool[T
 	p.workerWait.Add(workerCount)
 	for range workerCount {
 		go func() {
-			for {
-				select {
-				case h, ok := <-p.workerChan:
-					if !ok {
-						p.workerWait.Done()
-						return
-					}
-					safeRun(h.job, h.resultCh, &p.stats)
-
-				case <-ctx.Done():
-					// drain remaining jobs so callers aren't left blocking forever
-					for {
-						select {
-						case h, ok := <-p.workerChan:
-							if !ok {
-								p.workerWait.Done()
-								return
-							}
-							h.resultCh <- Result[T]{Err: ctx.Err()}
-
-						default:
-							p.workerWait.Done()
-							return
-						}
-					}
-				}
+			for h := range p.workerChan {
+				safeRun(h.job, h.resultCh, &p.stats)
 			}
+			p.workerWait.Done()
 		}()
 	}
 
